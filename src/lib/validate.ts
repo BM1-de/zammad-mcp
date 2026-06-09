@@ -50,26 +50,42 @@ export function validateReplyHtml(
   // "Hi JaneBest regards" and \bJane\b no longer matches.
   const textOnly = withoutBlockquotes.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
-  if (textOnly.includes('"')) {
+  const asciiQuoteIdx = textOnly.indexOf('"');
+  if (asciiQuoteIdx >= 0) {
+    const ctxStart = Math.max(0, asciiQuoteIdx - 15);
+    const ctxEnd = Math.min(textOnly.length, asciiQuoteIdx + 16);
+    const context = textOnly.slice(ctxStart, ctxEnd);
+    const hasGermanOpener = textOnly.includes("„");
+    const fixHint = hasGermanOpener
+      ? 'Your text already uses „ (U+201E, German opener) — close with ” (U+201D, German closer). REPLACE the " character literally with ” — do NOT submit the same body again.'
+      : 'Use „…” (U+201E + U+201D) for German or “…” (U+201C + U+201D) for English. REPLACE every ASCII " with one of those literally.';
     issues.push({
       code: "ASCII_QUOTE",
-      msg: 'Straight ASCII quote " found in visible text. Use typographically correct quotes (e.g. "…" for English, „…" for German).',
+      msg: `Straight ASCII quote " (U+0022) at text position ${asciiQuoteIdx} — context "…${context}…". ${fixHint}`,
     });
   }
 
-  // German typographic mistake: opening with „ (U+201E) and closing with „ (U+201C,
-  // the English opener) instead of " (U+201D, the German closer).
-  if (textOnly.includes("„") && textOnly.includes("“") && !textOnly.includes("”")) {
+  // German typographic mistake: opening with „ (U+201E) and closing with “ (U+201C,
+  // which is the English opener) instead of ” (U+201D, the German closer).
+  const wrongCloserIdx = textOnly.indexOf("“");
+  if (wrongCloserIdx >= 0 && textOnly.includes("„") && !textOnly.includes("”")) {
+    const ctxStart = Math.max(0, wrongCloserIdx - 15);
+    const ctxEnd = Math.min(textOnly.length, wrongCloserIdx + 16);
+    const context = textOnly.slice(ctxStart, ctxEnd);
     issues.push({
       code: "WRONG_CLOSING_QUOTE",
-      msg: 'German opening quote „ (U+201E) used together with English opener " (U+201C) as closer. The German closing quote is " (U+201D).',
+      msg: `German opening quote „ (U+201E) used together with English opener “ (U+201C) as closer at position ${wrongCloserIdx} — context "…${context}…". REPLACE “ literally with ” (U+201D). Do NOT submit the same body again.`,
     });
   }
 
-  if (/\p{L}'\p{L}/u.test(textOnly)) {
+  const apostropheMatch = textOnly.match(/\p{L}'\p{L}/u);
+  if (apostropheMatch && apostropheMatch.index !== undefined) {
+    const idx = apostropheMatch.index + 1;
+    const ctxStart = Math.max(0, idx - 10);
+    const ctxEnd = Math.min(textOnly.length, idx + 11);
     issues.push({
       code: "ASCII_APOSTROPHE",
-      msg: "ASCII apostrophe ' found inside a word. Use typographic apostrophe ’ (U+2019).",
+      msg: `ASCII apostrophe ' (U+0027) inside a word at position ${idx} — context "…${textOnly.slice(ctxStart, ctxEnd)}…". REPLACE ' literally with ’ (U+2019).`,
     });
   }
 
