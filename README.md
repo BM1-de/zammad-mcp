@@ -44,6 +44,9 @@ What you provide:
 - `signature_id` (optional, default `1`) — which signature to render.
 - `extra_cc` (optional) — additional CC addresses to add on top of the
   automatic Reply-All set.
+- `quote_locale` (optional, `en` or `de`) — language for the quote block's
+  date format and "wrote:" lead-in. When omitted, the server default
+  (`ZAMMAD_QUOTE_LOCALE`, falling back to `en`) is used.
 
 #### Reply-HTML validation
 
@@ -54,7 +57,7 @@ The tool refuses the call if any of these issues are found in `reply_html`:
 | `P_TAG` | No top-level `<p>` tags (content inside `<blockquote>` is ignored). Use nested `<div>` instead — Zammad's editor produces doubled empty lines from `<p>` blocks. |
 | `DOUBLE_BR` | No `<br><br>` sequences. Use `<div><br></div>` for paragraph spacing. |
 | `ASCII_QUOTE` | No straight ASCII `"` in visible text. Use typographically correct quotes for your language. |
-| `WRONG_CLOSING_QUOTE` | If the text uses German opening `„` (U+201E), it must close with `”` (U+201D), not the English opener `“` (U+201C). |
+| `WRONG_CLOSING_QUOTE` | If the text uses the German opening quote `„` (U+201E), it must close with `”` (U+201D), not with `“` (U+201C, which is the English opener). |
 | `ASCII_APOSTROPHE` | No ASCII `'` inside a word. Use `’` (U+2019). |
 | `SIGNATURE_DUPLICATE` (configurable) | The body contains a name listed in `ZAMMAD_BANNED_NAMES`. Prevents agents from typing the name that the signature already provides. |
 | `MISSING_GREETING` (configurable) | The body does not contain the string configured in `ZAMMAD_REQUIRED_GREETING`. |
@@ -67,11 +70,11 @@ when their respective env-var is empty.
 
 ```html
 <div>
-  <div>Sehr geehrter Herr Müller,</div>
+  <div>Dear Mr Smith,</div>
   <div><br></div>
-  <div>vielen Dank für Ihre Nachricht — wir haben das Problem behoben.</div>
+  <div>thank you for your message — we have resolved the issue.</div>
   <div><br></div>
-  <div>Viele Grüße</div>
+  <div>Best regards</div>
 </div>
 ```
 
@@ -127,6 +130,7 @@ Node 18 or higher.
 | `ZAMMAD_SELF_EMAILS` | no | Comma-separated list of own addresses that should never appear in CC. Default: empty (no filtering). |
 | `ZAMMAD_BANNED_NAMES` | no | Comma-separated list of name patterns the reply body must not contain (typically: your own name, because the signature already supplies it). Default: empty. |
 | `ZAMMAD_REQUIRED_GREETING` | no | If set, every reply body must contain this string (case-insensitive). Default: empty. |
+| `ZAMMAD_QUOTE_LOCALE` | no | Default locale for the quote-block lead-in. Either `en` (default) or `de`. Per-call overridable via the `quote_locale` tool parameter. |
 
 See `.env.example` for a starter file.
 
@@ -145,7 +149,8 @@ and / or your Claude Code config (`~/.claude.json`):
     "ZAMMAD_HTTP_TOKEN": "...",
     "ZAMMAD_SELF_EMAILS": "support@example.com,me@example.com",
     "ZAMMAD_BANNED_NAMES": "Jane Doe,Jane",
-    "ZAMMAD_REQUIRED_GREETING": "Viele Grüße"
+    "ZAMMAD_REQUIRED_GREETING": "Best regards",
+    "ZAMMAD_QUOTE_LOCALE": "en"
   }
 }
 ```

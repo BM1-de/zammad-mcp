@@ -71,36 +71,46 @@ test("ensureMessageIdBrackets handles empty", () => {
   assert.equal(ensureMessageIdBrackets(null), "");
 });
 
-test("formatBerlin: summer time (CEST = UTC+2)", () => {
-  // 2026-06-09T08:00:00Z → 2026-06-09 10:00:00 CEST → Dienstag
+test("formatBerlin: summer time (CEST = UTC+2) en default", () => {
+  // 2026-06-09T08:00:00Z → 2026-06-09 10:00:00 CEST → Tuesday
   const d = formatBerlin("2026-06-09T08:00:00.000Z");
-  assert.equal(d.weekday, "Dienstag");
+  assert.equal(d.weekday, "Tuesday");
   assert.equal(d.day, "09");
-  assert.equal(d.month, "Juni");
+  assert.equal(d.month, "June");
   assert.equal(d.year, "2026");
   assert.equal(d.hour, "10");
   assert.equal(d.minute, "00");
   assert.equal(d.second, "00");
 });
 
-test("formatBerlin: winter time (CET = UTC+1)", () => {
+test("formatBerlin: winter time (CET = UTC+1) de", () => {
   // 2026-01-15T08:00:00Z → 2026-01-15 09:00:00 CET → Donnerstag
-  const d = formatBerlin("2026-01-15T08:00:00.000Z");
+  const d = formatBerlin("2026-01-15T08:00:00.000Z", "de");
   assert.equal(d.weekday, "Donnerstag");
   assert.equal(d.day, "15");
   assert.equal(d.month, "Januar");
   assert.equal(d.hour, "09");
 });
 
-test("buildQuoteBlock contains DE date + name + body", () => {
+test("buildQuoteBlock en (default) contains 'On ... wrote:'", () => {
   const block = buildQuoteBlock(
     "2026-06-09T08:00:00.000Z",
     "Max Mustermann <max@example.com>",
     "<div>Original-Text</div>",
   );
-  assert.match(block, /Am Dienstag, 09\. Juni 2026 um 10:00:00, schrieb Max Mustermann/);
+  assert.match(block, /On Tuesday, 9 June 2026 at 10:00:00, Max Mustermann wrote:/);
   assert.match(block, /<div>Original-Text<\/div>/);
   assert.match(block, /<blockquote type="cite">/);
+});
+
+test("buildQuoteBlock de contains 'Am ... schrieb X:'", () => {
+  const block = buildQuoteBlock(
+    "2026-06-09T08:00:00.000Z",
+    "Max Mustermann <max@example.com>",
+    "<div>Original-Text</div>",
+    "de",
+  );
+  assert.match(block, /Am Dienstag, 09\. Juni 2026 um 10:00:00, schrieb Max Mustermann/);
 });
 
 test("composeFinalBody includes signature marker", () => {

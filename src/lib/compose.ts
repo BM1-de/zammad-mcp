@@ -1,8 +1,27 @@
-const WEEKDAYS_DE = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-const MONTHS_DE = [
-  "Januar", "Februar", "März", "April", "Mai", "Juni",
-  "Juli", "August", "September", "Oktober", "November", "Dezember",
-];
+export type QuoteLocale = "en" | "de";
+
+const WEEKDAYS: Record<QuoteLocale, readonly string[]> = {
+  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  de: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
+};
+
+const MONTHS: Record<QuoteLocale, readonly string[]> = {
+  en: [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ],
+  de: [
+    "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember",
+  ],
+};
+
+const QUOTE_LEAD_IN: Record<QuoteLocale, (parts: BerlinParts, fromName: string) => string> = {
+  en: (d, name) =>
+    `On ${d.weekday}, ${parseInt(d.day, 10)} ${d.month} ${d.year} at ${d.hour}:${d.minute}:${d.second}, ${name} wrote:`,
+  de: (d, name) =>
+    `Am ${d.weekday}, ${d.day}. ${d.month} ${d.year} um ${d.hour}:${d.minute}:${d.second}, schrieb ${name}:`,
+};
 
 export function extractEmail(raw: string | null | undefined): string {
   if (!raw) return "";
@@ -59,8 +78,9 @@ interface BerlinParts {
   second: string;
 }
 
-export function formatBerlin(isoUtc: string): BerlinParts {
+export function formatBerlin(isoUtc: string, locale: QuoteLocale = "en"): BerlinParts {
   const date = new Date(isoUtc);
+  // Always extract via en-US to get stable, parseable parts; localise via lookup tables.
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: "Europe/Berlin",
     weekday: "short",
@@ -75,7 +95,6 @@ export function formatBerlin(isoUtc: string): BerlinParts {
   const parts = fmt.formatToParts(date);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
 
-  // Map weekday "Mon" → Index. Intl gives "Mon", "Tue", ...
   const wdShort = get("weekday");
   const wdMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
   const wdIdx = wdMap[wdShort] ?? 0;
@@ -83,13 +102,12 @@ export function formatBerlin(isoUtc: string): BerlinParts {
   const monthIdx = parseInt(get("month"), 10) - 1;
 
   let hour = get("hour");
-  // Intl in en-US with hour12:false sometimes returns "24" at midnight — normalize.
   if (hour === "24") hour = "00";
 
   return {
-    weekday: WEEKDAYS_DE[wdIdx]!,
+    weekday: WEEKDAYS[locale]![wdIdx]!,
     day: get("day"),
-    month: MONTHS_DE[monthIdx] ?? "",
+    month: MONTHS[locale]![monthIdx] ?? "",
     year: get("year"),
     hour,
     minute: get("minute"),
@@ -101,13 +119,14 @@ export function buildQuoteBlock(
   createdAtIsoUtc: string,
   fromHeader: string,
   originalBodyHtml: string,
+  locale: QuoteLocale = "en",
 ): string {
-  const d = formatBerlin(createdAtIsoUtc);
+  const d = formatBerlin(createdAtIsoUtc, locale);
   const fromName = extractDisplayName(fromHeader) || extractEmail(fromHeader);
+  const leadIn = QUOTE_LEAD_IN[locale]!(d, fromName);
   return (
     `<div><blockquote type="cite">` +
-    `Am ${d.weekday}, ${d.day}. ${d.month} ${d.year} um ${d.hour}:${d.minute}:${d.second}, schrieb ${fromName}:` +
-    `<br><br>\n${originalBodyHtml}\n</blockquote></div>`
+    `${leadIn}<br><br>\n${originalBodyHtml}\n</blockquote></div>`
   );
 }
 

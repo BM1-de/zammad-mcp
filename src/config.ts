@@ -1,12 +1,13 @@
+import type { QuoteLocale } from "./lib/compose.ts";
+
 /**
  * Runtime configuration for the Zammad MCP server.
  *
  * All fields are optional except `zammadUrl` and `zammadHttpToken`. When a
  * field is empty, the related feature is disabled (e.g. an empty
  * `bannedNamePatterns` means no `SIGNATURE_DUPLICATE` check). This keeps the
- * public/generic server fully functional without any environment customisation
- * while letting BM1 (or any other deployment) inject opinionated defaults via
- * env-vars.
+ * server fully functional without any customisation while letting a
+ * deployment inject opinionated defaults via env-vars.
  */
 export interface ServerConfig {
   /** Zammad REST base URL, e.g. `https://mail.example.com/api/v1/`. */
@@ -23,10 +24,15 @@ export interface ServerConfig {
   bannedNamePatterns: string[];
   /**
    * Greeting that the reply body must contain. When empty, the check is
-   * skipped. Useful defaults: "Viele Grüße", "Mit freundlichen Grüßen",
-   * "Best regards".
+   * skipped. Useful defaults: "Best regards", "Viele Grüße".
    */
   requiredGreeting: string;
+  /**
+   * Default locale for the quote block ("On Tuesday, 9 June 2026 at …, X
+   * wrote:" vs "Am Dienstag, 09. Juni 2026 um …, schrieb X:"). Overridable
+   * per tool call via the `quote_locale` parameter.
+   */
+  defaultQuoteLocale: QuoteLocale;
 }
 
 function parseList(raw: string | undefined): string[] {
@@ -52,11 +58,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     );
   }
 
+  const rawLocale = env.ZAMMAD_QUOTE_LOCALE?.trim().toLowerCase();
+  const defaultQuoteLocale: QuoteLocale =
+    rawLocale === "de" ? "de" : "en";
+
   return {
     zammadUrl,
     zammadHttpToken,
     selfEmails: parseList(env.ZAMMAD_SELF_EMAILS),
     bannedNamePatterns: parseList(env.ZAMMAD_BANNED_NAMES),
     requiredGreeting: env.ZAMMAD_REQUIRED_GREETING?.trim() ?? "",
+    defaultQuoteLocale,
   };
 }

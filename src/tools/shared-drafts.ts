@@ -53,7 +53,7 @@ async function findReplyTargetArticle(
     `/ticket_articles/by_ticket/${ticketId}`,
   );
   if (!articles.length) {
-    throw new Error(`Ticket ${ticketId} hat keine Artikel — kein Reply möglich.`);
+    throw new Error(`Ticket ${ticketId} has no articles — cannot build a reply.`);
   }
   const customerEmails = articles.filter(
     (a) => a.sender === "Customer" && a.type === "email",
@@ -65,19 +65,19 @@ async function buildFromHeader(client: ZammadClient, ticketId: number): Promise<
   const user = await client.request<ZammadUser>("/users/me");
   const ticket = await client.request<ZammadTicket>(`/tickets/${ticketId}`);
   if (!ticket.group_id) {
-    throw new Error(`Ticket ${ticketId} hat keine group_id — kann from-Header nicht bauen.`);
+    throw new Error(`Ticket ${ticketId} has no group_id — cannot build a from-header.`);
   }
   const group = await client.request<ZammadGroup>(`/groups/${ticket.group_id}`);
   if (!group.email_address_id) {
     throw new Error(
-      `Group ${group.name ?? ticket.group_id} hat keine email_address_id — kein Fallback.`,
+      `Group "${group.name ?? ticket.group_id}" has no email_address_id and there is no fallback.`,
     );
   }
   const addr = await client.request<ZammadEmailAddress>(
     `/email_addresses/${group.email_address_id}`,
   );
   if (!addr.email) {
-    throw new Error(`email_address ${group.email_address_id} hat kein email-Feld.`);
+    throw new Error(`email_address ${group.email_address_id} has no email field.`);
   }
   const display = `${(user.firstname ?? "").trim()} ${(user.lastname ?? "").trim()}`.trim();
   return display ? `${display} <${addr.email}>` : `<${addr.email}>`;
@@ -91,35 +91,40 @@ export function registerSharedDraftTools(
   server.tool(
     "zammad_create_shared_draft",
     [
-      "Erstellt oder überschreibt den Shared Draft für ein Zammad-Ticket als Reply-All-Email.",
-      "Holt automatisch den letzten Customer-Artikel und setzt to/cc/subject/in_reply_to korrekt.",
-      "Rendert die Signatur frisch (inkl. Platzhalter-Substitution) und hängt das Original als",
-      "deutsch lokalisierten Zitatblock an. PUT-Semantik: bestehender Draft wird überschrieben.",
+      "Create or overwrite the shared draft of a Zammad ticket as a Reply-All email.",
+      "Auto-detects the most recent customer article and derives to/cc/subject/in_reply_to from it.",
+      "Renders the agent's signature fresh from Zammad (with placeholder substitution and lazy",
+      "loading of related objects) and appends the original article as a localised <blockquote>.",
+      "PUT semantics: any existing draft on the ticket is overwritten.",
       "",
-      "Reply-HTML-Pflicht-Konventionen (werden strikt validiert):",
-      "- Nur <div>...</div>-Struktur, KEIN <p>, KEIN <br><br>.",
-      "- Deutsche Anführungszeichen: „…\" (U+201E + U+201D), nie ASCII \".",
-      "- Apostroph ’ (U+2019), nie ASCII '.",
-      "- Optional deployment-spezifisch: Body muss die konfigurierte Grußformel enthalten und darf keine bestimmten Namen führen (Signatur-Duplikate vermeiden).",
+      "reply_html validation (always on for universal rules, conditional for configured ones):",
+      "- universal: no top-level <p>, no <br><br>, no ASCII straight quotes \", no ASCII apostrophe ' inside words",
+      "- when ZAMMAD_BANNED_NAMES is set: body must not contain any banned name",
+      "- when ZAMMAD_REQUIRED_GREETING is set: body must contain that greeting",
     ].join(" "),
     {
       ticket_id: z.number().int().positive().describe(
-        "Zammad Ticket-ID (aus URL: /#ticket/zoom/<id>).",
+        "Zammad ticket ID (numeric, from URL: /#ticket/zoom/<id>).",
       ),
       reply_html: z.string().min(1).describe(
-        "Reply-Body als HTML mit verschachtelten <div>s. Beispiel: " +
-        "<div><div>Hallo Herr Müller,</div><div><br></div>" +
-        "<div>vielen Dank für Ihre Nachricht …</div><div><br></div>" +
-        "<div>Viele Grüße</div></div>",
+        "Reply body as HTML with a nested <div> structure. Example: " +
+        "<div><div>Hello Mr Smith,</div><div><br></div>" +
+        "<div>thank you for your message ...</div><div><br></div>" +
+        "<div>Best regards</div></div>",
       ),
       signature_id: z.number().int().positive().default(1).describe(
-        "Signatur-ID aus /signatures (default: 1).",
+        "Signature ID from /signatures (default: 1).",
       ),
       extra_cc: z.array(z.string().email()).default([]).describe(
-        "Zusätzliche CC-Adressen, die über das automatische Reply-All hinaus gesetzt werden sollen.",
+        "Additional CC addresses to add on top of the automatic Reply-All set.",
+      ),
+      quote_locale: z.enum(["en", "de"]).optional().describe(
+        "Locale for the quote block lead-in. 'en' → \"On Tuesday, 9 June 2026 at 10:00:00, X wrote:\". " +
+        "'de' → \"Am Dienstag, 09. Juni 2026 um 10:00:00, schrieb X:\". " +
+        "When omitted, falls back to ZAMMAD_QUOTE_LOCALE (server default).",
       ),
     },
-    async ({ ticket_id, reply_html, signature_id, extra_cc }) => {
+    async ({ ticket_id, reply_html, signature_id, extra_cc, quote_locale }) => {
       const issues = validateReplyHtml(reply_html, {
         bannedNamePatterns: config.bannedNamePatterns,
         requiredGreeting: config.requiredGreeting,
@@ -145,7 +150,7 @@ export function registerSharedDraftTools(
 
         const toEmail = extractEmail(ref.from);
         if (!toEmail) {
-          throw new Error(`Letzter Artikel hat kein 'from' — Reply-To unklar.`);
+          throw new Error("The reference article has no 'from' header — reply target is unknown.");
         }
         const ccList = filterSelfFromCc(ref.cc, config.selfEmails);
         for (const extra of extra_cc) {
@@ -165,9 +170,15 @@ export function registerSharedDraftTools(
         );
         const originalBody = fullArticle.body ?? "";
         if (!ref.created_at) {
-          throw new Error(`Artikel ${ref.id} hat kein created_at — Zitatblock-Datum unmöglich.`);
+          throw new Error(`Article ${ref.id} has no created_at — cannot build a quote-block date.`);
         }
-        const quoteBlock = buildQuoteBlock(ref.created_at, ref.from ?? "", originalBody);
+        const effectiveLocale = quote_locale ?? config.defaultQuoteLocale;
+        const quoteBlock = buildQuoteBlock(
+          ref.created_at,
+          ref.from ?? "",
+          originalBody,
+          effectiveLocale,
+        );
 
         const finalBody = composeFinalBody(reply_html, renderedSig, signature_id, quoteBlock);
 
@@ -208,6 +219,7 @@ export function registerSharedDraftTools(
                   subject,
                   in_reply_to: inReplyTo,
                   reference_article_id: ref.id,
+                  quote_locale: effectiveLocale,
                   draft_id: draftResp.id ?? null,
                 },
                 null,
@@ -218,7 +230,7 @@ export function registerSharedDraftTools(
         };
       } catch (err) {
         const msg = err instanceof ZammadError
-          ? `Zammad API Fehler (${err.status}) auf ${err.path}: ${err.bodyText}`
+          ? `Zammad API error (${err.status}) on ${err.path}: ${err.bodyText}`
           : err instanceof Error
             ? err.message
             : String(err);
