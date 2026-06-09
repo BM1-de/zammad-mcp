@@ -125,9 +125,11 @@ export function registerSharedDraftTools(
       ),
     },
     async ({ ticket_id, reply_html, signature_id, extra_cc, quote_locale }) => {
+      const effectiveLocale = quote_locale ?? config.defaultQuoteLocale;
       const issues = validateReplyHtml(reply_html, {
         bannedNamePatterns: config.bannedNamePatterns,
         requiredGreeting: config.requiredGreeting,
+        locale: effectiveLocale,
       });
       if (issues.length > 0) {
         return {
@@ -172,7 +174,6 @@ export function registerSharedDraftTools(
         if (!ref.created_at) {
           throw new Error(`Article ${ref.id} has no created_at — cannot build a quote-block date.`);
         }
-        const effectiveLocale = quote_locale ?? config.defaultQuoteLocale;
         const quoteBlock = buildQuoteBlock(
           ref.created_at,
           ref.from ?? "",

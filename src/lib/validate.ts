@@ -16,6 +16,14 @@ export interface ValidatorOptions {
    * disabled).
    */
   requiredGreeting?: string;
+  /**
+   * Locale of the reply body. Enables locale-specific typography checks:
+   * - "de": the parenthetical dash must be " – " (U+2013 with spaces), not
+   *   "—" (U+2014, em-dash) and not " - " (ASCII hyphen with spaces).
+   * - "en": em-dash and en-dash both accepted; " - " is tolerated.
+   * Default: "en".
+   */
+  locale?: "en" | "de";
 }
 
 function escapeRegex(s: string): string {
@@ -87,6 +95,32 @@ export function validateReplyHtml(
       code: "ASCII_APOSTROPHE",
       msg: `ASCII apostrophe ' (U+0027) inside a word at position ${idx} — context "…${textOnly.slice(ctxStart, ctxEnd)}…". REPLACE ' literally with ’ (U+2019).`,
     });
+  }
+
+  const locale = options.locale ?? "en";
+  if (locale === "de") {
+    // Em-dash "—" (U+2014) is wrong in German typography. German uses
+    // en-dash "–" (U+2013) with spaces as parenthetical dash.
+    const emIdx = textOnly.indexOf("—");
+    if (emIdx >= 0) {
+      const ctxStart = Math.max(0, emIdx - 15);
+      const ctxEnd = Math.min(textOnly.length, emIdx + 16);
+      issues.push({
+        code: "WRONG_DASH_LOCALE",
+        msg: `Em-dash "—" (U+2014) at position ${emIdx} — context "…${textOnly.slice(ctxStart, ctxEnd)}…". German typography uses en-dash "–" (U+2013) with spaces around it. REPLACE "—" literally with "–".`,
+      });
+    }
+    // ASCII hyphen used as parenthetical dash: " - " (space-hyphen-space).
+    const asciiDashMatch = textOnly.match(/ - /);
+    if (asciiDashMatch && asciiDashMatch.index !== undefined) {
+      const idx = asciiDashMatch.index + 1; // position of the hyphen itself
+      const ctxStart = Math.max(0, idx - 15);
+      const ctxEnd = Math.min(textOnly.length, idx + 16);
+      issues.push({
+        code: "ASCII_DASH_AS_GEDANKENSTRICH",
+        msg: `ASCII hyphen "-" (U+002D) used as parenthetical dash at position ${idx} — context "…${textOnly.slice(ctxStart, ctxEnd)}…". German typography requires en-dash with spaces: " – " (U+2013). REPLACE " - " literally with " – ".`,
+      });
+    }
   }
 
   const banned = options.bannedNamePatterns ?? [];

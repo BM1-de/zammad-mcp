@@ -91,6 +91,57 @@ test("validator does NOT flag missing greeting when feature is off", () => {
   assert.ok(!issues.some((i) => i.code === "MISSING_GREETING"));
 });
 
+test("validator (de) flags em-dash in body", () => {
+  const html = "<div>This is — wrong in German</div><div>Best regards</div>";
+  const issues = validateReplyHtml(html, { locale: "de" });
+  assert.ok(issues.some((i) => i.code === "WRONG_DASH_LOCALE"));
+});
+
+test("validator (en) accepts em-dash", () => {
+  const html = "<div>This is — fine in English</div><div>Best regards</div>";
+  const issues = validateReplyHtml(html, { locale: "en" });
+  assert.ok(!issues.some((i) => i.code === "WRONG_DASH_LOCALE"));
+});
+
+test("validator (de) flags ' - ' as parenthetical dash", () => {
+  const html = "<div>This is - wrong in German</div><div>Best regards</div>";
+  const issues = validateReplyHtml(html, { locale: "de" });
+  assert.ok(issues.some((i) => i.code === "ASCII_DASH_AS_GEDANKENSTRICH"));
+});
+
+test("validator (en) tolerates ' - '", () => {
+  const html = "<div>This is - fine in English</div><div>Best regards</div>";
+  const issues = validateReplyHtml(html, { locale: "en" });
+  assert.ok(!issues.some((i) => i.code === "ASCII_DASH_AS_GEDANKENSTRICH"));
+});
+
+test("validator (de) accepts en-dash with spaces", () => {
+  const html = "<div>Das ist – korrekt im Deutschen</div><div>Viele Grüße</div>";
+  const issues = validateReplyHtml(html, { locale: "de" });
+  assert.deepEqual(
+    issues.filter((i) => i.code === "WRONG_DASH_LOCALE" || i.code === "ASCII_DASH_AS_GEDANKENSTRICH"),
+    [],
+  );
+});
+
+test("validator (de) accepts en-dash without spaces (Bis-Strich)", () => {
+  const html = "<div>9–17 Uhr</div><div>Viele Grüße</div>";
+  const issues = validateReplyHtml(html, { locale: "de" });
+  assert.deepEqual(
+    issues.filter((i) => i.code === "WRONG_DASH_LOCALE" || i.code === "ASCII_DASH_AS_GEDANKENSTRICH"),
+    [],
+  );
+});
+
+test("validator (de) accepts hyphen inside compound words", () => {
+  const html = "<div>state-of-the-art Lösung</div><div>Viele Grüße</div>";
+  const issues = validateReplyHtml(html, { locale: "de" });
+  assert.deepEqual(
+    issues.filter((i) => i.code === "ASCII_DASH_AS_GEDANKENSTRICH"),
+    [],
+  );
+});
+
 test("validator ignores content inside <blockquote>", () => {
   const html =
     "<div>Hello</div><div>Best regards</div>" +

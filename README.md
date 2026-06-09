@@ -63,6 +63,8 @@ The tool refuses the call if any of these issues are found in `reply_html`:
 | `ASCII_QUOTE` | No straight ASCII `"` in visible text. Use typographically correct quotes for your language. |
 | `WRONG_CLOSING_QUOTE` | If the text uses the German opening quote `„` (U+201E), it must close with `”` (U+201D), not with `“` (U+201C, which is the English opener). |
 | `ASCII_APOSTROPHE` | No ASCII `'` inside a word. Use `’` (U+2019). |
+| `WRONG_DASH_LOCALE` (locale=de only) | German body uses em-dash `—` (U+2014). German typography uses en-dash `–` (U+2013) with spaces as parenthetical dash. |
+| `ASCII_DASH_AS_GEDANKENSTRICH` (locale=de only) | German body uses ` - ` (ASCII hyphen with spaces) as parenthetical dash. Use ` – ` (en-dash with spaces) instead. |
 | `SIGNATURE_DUPLICATE` (configurable) | The body contains a name listed in `ZAMMAD_BANNED_NAMES`. Prevents agents from typing the name that the signature already provides. |
 | `MISSING_GREETING` (configurable) | The body does not contain the string configured in `ZAMMAD_REQUIRED_GREETING`. |
 
