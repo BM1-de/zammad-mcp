@@ -1,118 +1,157 @@
 # zammad-mcp
 
-MCP-Server für Zammad — BM1-spezifische Workflows.
+MCP server for [Zammad](https://zammad.org) that focuses on workflows the
+standard Zammad API tooling does not cover well — primarily **shared drafts**
+with strict reply-HTML validation, fresh signature rendering and German-
+localised quote blocks.
 
-Co-existiert mit dem generischen [`basher83/zammad-mcp`](https://github.com/basher83/zammad-mcp).
-Der hier deckt nur Workflows ab, die `basher83/zammad-mcp` **nicht** kann oder
-nicht in der gewünschten Form macht — angefangen mit Shared Drafts inkl.
-korrekter Reply-All-Logik, frisch gerenderter Signatur und deutschem
-Zitatblock.
+Built to coexist with generic Zammad MCP servers (e.g.
+[`basher83/zammad-mcp`](https://github.com/basher83/zammad-mcp)) — this one
+deliberately covers only a narrow set of opinionated workflows.
 
 ## Tools
 
 ### `zammad_create_shared_draft`
 
-Erstellt oder überschreibt den Shared Draft eines Tickets als Reply-All-Email.
+Creates or overwrites the shared draft of a Zammad ticket as a Reply-All
+email.
 
-Was der Server für dich macht:
-- Letzten Customer-Artikel finden (`sender=Customer, type=email`, fallback: letzter Artikel)
-- `to`, `cc`, `subject`, `in_reply_to`, `from` automatisch berechnen
-- Eigene Adressen (`support@bm1.de`, `baumgaertner@bm1.de`) aus CC filtern
-- Signatur frisch holen + Platzhalter substituieren (lazy-loaded, mit Cache)
-- HTML-Tags innerhalb `#{...}` defensiv strippen
-- Original-Body als deutsch lokalisierten Zitatblock anhängen (Europe/Berlin, CEST/CET)
-- `data-signature`-Marker setzen, damit Zammad keine zweite Signatur draufpackt
-- `PUT /tickets/<id>/shared_draft` aufrufen
+What the server does automatically:
 
-Was du lieferst:
-- `ticket_id`
-- `reply_html` — der reine Antworttext als `<div>...</div>`-Struktur
+- Finds the last incoming customer article (`sender=Customer`, `type=email`;
+  falls back to the most recent article if none).
+- Computes `to`, `cc`, `subject`, `in_reply_to` and `from` from that article
+  plus `/users/me` and the ticket's group email-address.
+- Filters configured self-addresses out of CC (so you don't reply to
+  yourself).
+- Fetches the signature template fresh from Zammad and resolves all
+  `#{...}` placeholders via lazy-loaded sub-objects (with caching).
+  Defensively strips HTML tags that may have crept into placeholders via
+  the Zammad WYSIWYG editor.
+- Appends the original article as a German-localised `<blockquote>` with
+  Europe/Berlin date (CET/CEST aware).
+- Wraps the signature in `<div data-signature="true" data-signature-id="X">`
+  so Zammad does not stack a second signature on top when the draft is
+  opened.
+- `PUT`s the assembled payload to `/tickets/<id>/shared_draft`.
 
-Konventionen, die strikt validiert werden (Tool returnt Fehler mit `isError: true`):
+What you provide:
 
-| Code | Regel |
+- `ticket_id` — Zammad ticket ID (numeric, from the URL
+  `/#ticket/zoom/<id>`).
+- `reply_html` — the actual reply body as HTML with a nested `<div>`
+  structure (see validation below).
+- `signature_id` (optional, default `1`) — which signature to render.
+- `extra_cc` (optional) — additional CC addresses to add on top of the
+  automatic Reply-All set.
+
+#### Reply-HTML validation
+
+The tool refuses the call if any of these issues are found in `reply_html`:
+
+| Code | Rule |
 |---|---|
-| `P_TAG` | Keine `<p>`-Tags auf Top-Level (Blockquote ausgenommen) |
-| `DOUBLE_BR` | Kein `<br><br>` — nutze `<div><br></div>` |
-| `ASCII_QUOTE` | Keine geraden Anführungszeichen `"` im Fließtext |
-| `WRONG_CLOSING_QUOTE` | Kein englisches `"` (U+201C) als Schluss |
-| `ASCII_APOSTROPHE` | Apostroph in Wörtern muss `’` (U+2019) sein |
-| `SIGNATURE_DUPLICATE` | Kein „Phillip" / „Phillip Baumgärtner" im Body (kommt aus Signatur) |
-| `MISSING_GREETING` | Body muss „Viele Grüße" enthalten |
+| `P_TAG` | No top-level `<p>` tags (content inside `<blockquote>` is ignored). Use nested `<div>` instead — Zammad's editor produces doubled empty lines from `<p>` blocks. |
+| `DOUBLE_BR` | No `<br><br>` sequences. Use `<div><br></div>` for paragraph spacing. |
+| `ASCII_QUOTE` | No straight ASCII `"` in visible text. Use typographically correct quotes for your language. |
+| `WRONG_CLOSING_QUOTE` | If the text uses German opening `„` (U+201E), it must close with `”` (U+201D), not the English opener `“` (U+201C). |
+| `ASCII_APOSTROPHE` | No ASCII `'` inside a word. Use `’` (U+2019). |
+| `SIGNATURE_DUPLICATE` (configurable) | The body contains a name listed in `ZAMMAD_BANNED_NAMES`. Prevents agents from typing the name that the signature already provides. |
+| `MISSING_GREETING` (configurable) | The body does not contain the string configured in `ZAMMAD_REQUIRED_GREETING`. |
 
-Beispiel `reply_html`:
+Universal checks (`P_TAG`, `DOUBLE_BR`, `ASCII_QUOTE`, `WRONG_CLOSING_QUOTE`,
+`ASCII_APOSTROPHE`) are always on. The two configurable checks are silent
+when their respective env-var is empty.
+
+#### Example `reply_html`
 
 ```html
 <div>
   <div>Sehr geehrter Herr Müller,</div>
   <div><br></div>
-  <div>vielen Dank für Ihre Nachricht. Wir haben das Problem behoben.</div>
+  <div>vielen Dank für Ihre Nachricht — wir haben das Problem behoben.</div>
   <div><br></div>
   <div>Viele Grüße</div>
 </div>
 ```
 
-Tool-Rückgabe bei Erfolg:
+#### Response
 
 ```json
 {
   "ok": true,
-  "ticket_url": "https://mail.bm1.de/#ticket/zoom/12345",
-  "to": "kunde@firma.de",
-  "cc": "kollege@firma.de",
-  "from": "Phillip Baumgärtner <support@bm1.de>",
-  "subject": "RE: Anfrage Hosting",
-  "in_reply_to": "<abc123@firma.de>",
+  "ticket_url": "https://zammad.example.com/#ticket/zoom/12345",
+  "to": "customer@example.com",
+  "cc": "colleague@example.com",
+  "from": "Jane Doe <support@example.com>",
+  "subject": "RE: Question about hosting",
+  "in_reply_to": "<abc123@example.com>",
   "reference_article_id": 98765,
-  "draft_id": 42
+  "draft_id": null
+}
+```
+
+(`draft_id` is `null` whenever Zammad does not return an `id` in the PUT
+response — the draft is still created, only the metadata is absent.)
+
+On validation failure:
+
+```json
+{
+  "ok": false,
+  "error": "INVALID_REPLY_HTML",
+  "issues": [
+    { "code": "P_TAG", "msg": "Top-level <p>-Tag bei Char 142 gefunden. ..." }
+  ]
 }
 ```
 
 ## Setup
 
 ```bash
-cd ~/Sites/Dev/zammad-mcp
+git clone <repo-url> zammad-mcp
+cd zammad-mcp
 npm install
 npm run build
 npm test
 ```
 
-## Registrierung
+Node 18 or higher.
 
-### Claude Code (`~/.claude.json`)
+## Configuration
+
+| Env-var | Required | Description |
+|---|---|---|
+| `ZAMMAD_URL` | yes | REST base URL, e.g. `https://mail.example.com/api/v1/`. |
+| `ZAMMAD_HTTP_TOKEN` | yes | API token (Profile → Token Access in Zammad). |
+| `ZAMMAD_SELF_EMAILS` | no | Comma-separated list of own addresses that should never appear in CC. Default: empty (no filtering). |
+| `ZAMMAD_BANNED_NAMES` | no | Comma-separated list of name patterns the reply body must not contain (typically: your own name, because the signature already supplies it). Default: empty. |
+| `ZAMMAD_REQUIRED_GREETING` | no | If set, every reply body must contain this string (case-insensitive). Default: empty. |
+
+See `.env.example` for a starter file.
+
+## Registration with Claude
+
+Add this block to `mcpServers` in your Claude Desktop config
+(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS)
+and / or your Claude Code config (`~/.claude.json`):
 
 ```jsonc
-{
-  "mcpServers": {
-    "mcp-zammad": {
-      "command": "node",
-      "args": ["/Users/phillip/Sites/Dev/zammad-mcp/dist/index.js"],
-      "env": {
-        "ZAMMAD_URL":        "https://mail.bm1.de/api/v1/",
-        "ZAMMAD_HTTP_TOKEN": "<token>"
-      }
-    }
+"zammad-mcp": {
+  "command": "node",
+  "args": ["/absolute/path/to/zammad-mcp/dist/index.js"],
+  "env": {
+    "ZAMMAD_URL": "https://mail.example.com/api/v1/",
+    "ZAMMAD_HTTP_TOKEN": "...",
+    "ZAMMAD_SELF_EMAILS": "support@example.com,me@example.com",
+    "ZAMMAD_BANNED_NAMES": "Jane Doe,Jane",
+    "ZAMMAD_REQUIRED_GREETING": "Viele Grüße"
   }
 }
 ```
 
-### Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`)
-
-Identischer Eintrag wie oben unter `mcpServers`.
-
-Nach jeder Änderung Claude Desktop neu starten; bei Claude Code reicht ein neuer
-Chat.
-
-## Geplante Erweiterungen
-
-Slot für weitere Tools in `src/tools/`:
-- `zammad_get_ticket_thread` — Ticket inkl. aller Artikel-Bodies in einem Call
-- `zammad_add_internal_note` — sicherer Wrapper für `type: "note"`, schließt
-  versehentliches `type: "email"` aus
-- `zammad_close_ticket` — Status auf `closed` setzen
-
-Pattern: neue Datei in `src/tools/`, exportiert `register<Name>Tools(server, client)`,
-in `src/index.ts` einmal aufrufen — fertig.
+Restart Claude Desktop completely (Cmd+Q + re-open) so the daemon reloads
+the MCP server list. In Claude Code a new chat is enough.
 
 ## Tests
 
@@ -120,6 +159,10 @@ in `src/index.ts` einmal aufrufen — fertig.
 npm test
 ```
 
-Unit-Tests laufen ohne Zammad-Verbindung (mit gemocktem Client für `signature.ts`).
-Den Live-Pfad gegen Zammad gibt's bewusst nicht in der Test-Suite — der hängt an
-echten Ticket-IDs und ist Manual-Smoke-Test gegen ein Test-Ticket.
+Unit tests use Node's built-in test runner via `--experimental-strip-types`.
+The signature resolver is tested with a mock Zammad client; everything
+else is pure logic and doesn't need network access.
+
+## License
+
+MIT

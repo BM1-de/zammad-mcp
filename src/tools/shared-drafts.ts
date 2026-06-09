@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ZammadClient, ZammadError } from "../api-client.ts";
 import { validateReplyHtml } from "../lib/validate.ts";
 import { renderSignature } from "../lib/signature.ts";
+import type { ServerConfig } from "../config.ts";
 import {
   buildQuoteBlock,
   composeFinalBody,
@@ -82,20 +83,24 @@ async function buildFromHeader(client: ZammadClient, ticketId: number): Promise<
   return display ? `${display} <${addr.email}>` : `<${addr.email}>`;
 }
 
-export function registerSharedDraftTools(server: McpServer, client: ZammadClient) {
+export function registerSharedDraftTools(
+  server: McpServer,
+  client: ZammadClient,
+  config: ServerConfig,
+) {
   server.tool(
     "zammad_create_shared_draft",
     [
       "Erstellt oder überschreibt den Shared Draft für ein Zammad-Ticket als Reply-All-Email.",
       "Holt automatisch den letzten Customer-Artikel und setzt to/cc/subject/in_reply_to korrekt.",
       "Rendert die Signatur frisch (inkl. Platzhalter-Substitution) und hängt das Original als",
-      "Zitatblock an. PUT-Semantik: bestehender Draft wird überschrieben.",
+      "deutsch lokalisierten Zitatblock an. PUT-Semantik: bestehender Draft wird überschrieben.",
       "",
       "Reply-HTML-Pflicht-Konventionen (werden strikt validiert):",
       "- Nur <div>...</div>-Struktur, KEIN <p>, KEIN <br><br>.",
       "- Deutsche Anführungszeichen: „…\" (U+201E + U+201D), nie ASCII \".",
       "- Apostroph ’ (U+2019), nie ASCII '.",
-      "- Mit „Viele Grüße\" enden — NICHT „Phillip\" schreiben (das macht die Signatur).",
+      "- Optional deployment-spezifisch: Body muss die konfigurierte Grußformel enthalten und darf keine bestimmten Namen führen (Signatur-Duplikate vermeiden).",
     ].join(" "),
     {
       ticket_id: z.number().int().positive().describe(
@@ -115,7 +120,10 @@ export function registerSharedDraftTools(server: McpServer, client: ZammadClient
       ),
     },
     async ({ ticket_id, reply_html, signature_id, extra_cc }) => {
-      const issues = validateReplyHtml(reply_html);
+      const issues = validateReplyHtml(reply_html, {
+        bannedNamePatterns: config.bannedNamePatterns,
+        requiredGreeting: config.requiredGreeting,
+      });
       if (issues.length > 0) {
         return {
           content: [
@@ -139,7 +147,7 @@ export function registerSharedDraftTools(server: McpServer, client: ZammadClient
         if (!toEmail) {
           throw new Error(`Letzter Artikel hat kein 'from' — Reply-To unklar.`);
         }
-        const ccList = filterSelfFromCc(ref.cc);
+        const ccList = filterSelfFromCc(ref.cc, config.selfEmails);
         for (const extra of extra_cc) {
           if (!ccList.includes(extra)) ccList.push(extra);
         }

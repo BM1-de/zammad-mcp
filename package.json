@@ -1,7 +1,7 @@
 {
   "name": "zammad-mcp",
   "version": "0.1.0",
-  "description": "MCP Server für Zammad — BM1-spezifische Workflows (Shared Drafts, später mehr)",
+  "description": "MCP Server for Zammad: automated shared drafts with strict reply-HTML validation, fresh signature rendering and German-localised quote blocks.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -13,7 +13,7 @@
     "dev": "tsc --watch",
     "test": "node --test tests/*.test.ts"
   },
-  "keywords": ["mcp", "zammad", "ticketing", "bm1"],
+  "keywords": ["mcp", "zammad", "ticketing", "shared-draft", "email"],
   "author": "Phillip Baumgärtner",
   "license": "MIT",
   "dependencies": {

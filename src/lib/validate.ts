@@ -3,9 +3,30 @@ export interface ValidationIssue {
   msg: string;
 }
 
-const SELF_NAMES = /\bPhillip(?:\s+Baumg(?:ä|ae)rtner)?\b/u;
+export interface ValidatorOptions {
+  /**
+   * List of name patterns (interpreted as case-sensitive sub-strings with
+   * word-boundary matching) that must not appear in the reply body. Use this
+   * to prevent agents from typing their own name into the body when the
+   * signature already supplies it. Default: empty (no check).
+   */
+  bannedNamePatterns?: string[];
+  /**
+   * If non-empty, the reply must literally contain this string (case-
+   * insensitive). Common values: "Viele Grüße", "Best regards". Default:
+   * empty (no check).
+   */
+  requiredGreeting?: string;
+}
 
-export function validateReplyHtml(html: string): ValidationIssue[] {
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function validateReplyHtml(
+  html: string,
+  options: ValidatorOptions = {},
+): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
   const withoutBlockquotes = html.replace(/<blockquote\b[\s\S]*?<\/blockquote>/gi, "");
@@ -34,8 +55,6 @@ export function validateReplyHtml(html: string): ValidationIssue[] {
     });
   }
 
-  // U+201C (LEFT DOUBLE QUOTATION MARK, ") wird im Deutschen NIE als Schluss verwendet.
-  // Wenn der Text ein U+201E öffnet, aber kein U+201D schließt, dafür aber U+201C → falsches Schlusszeichen.
   if (textOnly.includes("„") && textOnly.includes("“") && !textOnly.includes("”")) {
     issues.push({
       code: "WRONG_CLOSING_QUOTE",
@@ -50,18 +69,29 @@ export function validateReplyHtml(html: string): ValidationIssue[] {
     });
   }
 
-  if (SELF_NAMES.test(textOnly)) {
-    issues.push({
-      code: "SIGNATURE_DUPLICATE",
-      msg: "„Phillip\" oder „Phillip Baumgärtner\" im Body gefunden. Der Name kommt aus der Signatur — schreibe nur „Viele Grüße\" am Ende.",
-    });
+  const banned = options.bannedNamePatterns ?? [];
+  if (banned.length > 0) {
+    for (const pat of banned) {
+      const re = new RegExp(`\\b${escapeRegex(pat)}\\b`, "u");
+      if (re.test(textOnly)) {
+        issues.push({
+          code: "SIGNATURE_DUPLICATE",
+          msg: `„${pat}" im Body gefunden. Dieser Name kommt aus der Signatur — entferne ihn aus dem reply_html.`,
+        });
+        break;
+      }
+    }
   }
 
-  if (!/Viele\s+Grüße/i.test(textOnly)) {
-    issues.push({
-      code: "MISSING_GREETING",
-      msg: "Keine Grußformel „Viele Grüße\" im Body gefunden. Pflicht für Reply-Drafts.",
-    });
+  const greeting = options.requiredGreeting?.trim();
+  if (greeting) {
+    const re = new RegExp(escapeRegex(greeting), "i");
+    if (!re.test(textOnly)) {
+      issues.push({
+        code: "MISSING_GREETING",
+        msg: `Keine Grußformel „${greeting}" im Body gefunden.`,
+      });
+    }
   }
 
   return issues;

@@ -2,12 +2,26 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { validateReplyHtml } from "../src/lib/validate.ts";
 
-test("validator accepts well-formed reply", () => {
+const FULL = {
+  bannedNamePatterns: ["Phillip", "Phillip Baumgärtner"],
+  requiredGreeting: "Viele Grüße",
+};
+
+test("validator accepts well-formed reply (no opts)", () => {
   const html =
     "<div><div>Hallo Herr Müller,</div><div><br></div>" +
     "<div>vielen Dank für Ihre Nachricht. Die „Datenbank” läuft.</div>" +
     "<div><br></div><div>Viele Grüße</div></div>";
   const issues = validateReplyHtml(html);
+  assert.deepEqual(issues, []);
+});
+
+test("validator accepts well-formed reply with full opts", () => {
+  const html =
+    "<div><div>Hallo Herr Müller,</div><div><br></div>" +
+    "<div>vielen Dank für Ihre Nachricht. Die „Datenbank” läuft.</div>" +
+    "<div><br></div><div>Viele Grüße</div></div>";
+  const issues = validateReplyHtml(html, FULL);
   assert.deepEqual(issues, []);
 });
 
@@ -47,28 +61,40 @@ test("validator flags ASCII apostrophe in word", () => {
   assert.ok(issues.some((i) => i.code === "ASCII_APOSTROPHE"));
 });
 
-test("validator flags Phillip in body", () => {
+test("validator flags banned name (Phillip)", () => {
+  const html = "<div>Viele Grüße Phillip</div>";
+  const issues = validateReplyHtml(html, FULL);
+  assert.ok(issues.some((i) => i.code === "SIGNATURE_DUPLICATE"));
+});
+
+test("validator flags banned name (Phillip Baumgärtner)", () => {
+  const html = "<div>Phillip Baumgärtner</div><div>Viele Grüße</div>";
+  const issues = validateReplyHtml(html, FULL);
+  assert.ok(issues.some((i) => i.code === "SIGNATURE_DUPLICATE"));
+});
+
+test("validator does NOT flag banned name when feature is off", () => {
   const html = "<div>Viele Grüße Phillip</div>";
   const issues = validateReplyHtml(html);
-  assert.ok(issues.some((i) => i.code === "SIGNATURE_DUPLICATE"));
+  assert.ok(!issues.some((i) => i.code === "SIGNATURE_DUPLICATE"));
 });
 
-test("validator flags Phillip Baumgärtner in body", () => {
-  const html = "<div>Phillip Baumgärtner</div><div>Viele Grüße</div>";
-  const issues = validateReplyHtml(html);
-  assert.ok(issues.some((i) => i.code === "SIGNATURE_DUPLICATE"));
+test("validator flags missing greeting when required", () => {
+  const html = "<div>Hallo</div>";
+  const issues = validateReplyHtml(html, FULL);
+  assert.ok(issues.some((i) => i.code === "MISSING_GREETING"));
 });
 
-test("validator flags missing Viele Grüße", () => {
+test("validator does NOT flag missing greeting when feature is off", () => {
   const html = "<div>Hallo</div>";
   const issues = validateReplyHtml(html);
-  assert.ok(issues.some((i) => i.code === "MISSING_GREETING"));
+  assert.ok(!issues.some((i) => i.code === "MISSING_GREETING"));
 });
 
 test("validator ignores content inside <blockquote>", () => {
   const html =
     "<div>Hallo</div><div>Viele Grüße</div>" +
     '<blockquote type="cite"><p>Original-Mail mit "ASCII-Quotes"</p></blockquote>';
-  const issues = validateReplyHtml(html);
+  const issues = validateReplyHtml(html, FULL);
   assert.deepEqual(issues, []);
 });

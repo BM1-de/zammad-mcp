@@ -1,5 +1,3 @@
-const DEFAULT_BASE_URL = "https://mail.bm1.de/api/v1/";
-
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -24,9 +22,9 @@ export class ZammadClient {
   private token: string;
   private baseUrl: string;
 
-  constructor(token: string, baseUrl?: string) {
+  constructor(token: string, baseUrl: string) {
     this.token = token;
-    this.baseUrl = (baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
+    this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
   async request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {

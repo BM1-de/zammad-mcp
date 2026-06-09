@@ -3,25 +3,26 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ZammadClient } from "./api-client.ts";
+import { loadConfig } from "./config.ts";
 import { registerSharedDraftTools } from "./tools/shared-drafts.ts";
 
-const token = process.env.ZAMMAD_HTTP_TOKEN;
-if (!token) {
-  console.error("Error: ZAMMAD_HTTP_TOKEN environment variable is required.");
-  console.error("Generate a token in Zammad: Profile → Token Access");
+let config;
+try {
+  config = loadConfig();
+} catch (err) {
+  console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 }
 
-const baseUrl = process.env.ZAMMAD_URL;
-const client = new ZammadClient(token, baseUrl);
+const client = new ZammadClient(config.zammadHttpToken, config.zammadUrl);
 
 const server = new McpServer({
   name: "zammad-mcp",
   version: "0.1.0",
-  description: "MCP Server für Zammad — BM1-spezifische Workflows (Shared Drafts und mehr).",
+  description: "MCP Server for Zammad — automated shared drafts with strict reply-HTML validation, fresh signature rendering and German-localised quote blocks.",
 });
 
-registerSharedDraftTools(server, client);
+registerSharedDraftTools(server, client, config);
 
 async function main() {
   const transport = new StdioServerTransport();

@@ -4,8 +4,6 @@ const MONTHS_DE = [
   "Juli", "August", "September", "Oktober", "November", "Dezember",
 ];
 
-const SELF_EMAILS = new Set(["support@bm1.de", "baumgaertner@bm1.de"]);
-
 export function extractEmail(raw: string | null | undefined): string {
   if (!raw) return "";
   const m = raw.match(/<\s*([^>]+?)\s*>/);
@@ -31,9 +29,12 @@ export function stripSubjectPrefix(subject: string | null | undefined): string {
   return s.trim();
 }
 
-export function filterSelfFromCc(cc: string | null | undefined, extraSelf: string[] = []): string[] {
+export function filterSelfFromCc(
+  cc: string | null | undefined,
+  selfEmails: string[] = [],
+): string[] {
   if (!cc) return [];
-  const blocked = new Set<string>([...SELF_EMAILS, ...extraSelf.map((e) => e.toLowerCase())]);
+  const blocked = new Set<string>(selfEmails.map((e) => e.toLowerCase()));
   return cc
     .split(",")
     .map((part) => extractEmail(part))

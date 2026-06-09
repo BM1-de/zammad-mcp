@@ -40,11 +40,17 @@ test("stripSubjectPrefix keeps clean subject", () => {
   assert.equal(stripSubjectPrefix("Anfrage Hosting"), "Anfrage Hosting");
 });
 
-test("filterSelfFromCc removes self emails case-insensitive", () => {
+test("filterSelfFromCc removes configured self emails case-insensitive", () => {
   const result = filterSelfFromCc(
     "kollege@firma.de, Support@BM1.de, kunde@firma.de, baumgaertner@bm1.de",
+    ["support@bm1.de", "baumgaertner@bm1.de"],
   );
   assert.deepEqual(result, ["kollege@firma.de", "kunde@firma.de"]);
+});
+
+test("filterSelfFromCc passes through everything when no self list is set", () => {
+  const result = filterSelfFromCc("a@x.de, b@y.de");
+  assert.deepEqual(result, ["a@x.de", "b@y.de"]);
 });
 
 test("filterSelfFromCc handles empty/null", () => {
