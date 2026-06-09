@@ -1,0 +1,27 @@
+{
+  "name": "zammad-mcp",
+  "version": "0.1.0",
+  "description": "MCP Server für Zammad — BM1-spezifische Workflows (Shared Drafts, später mehr)",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "zammad-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "test": "node --test tests/*.test.ts"
+  },
+  "keywords": ["mcp", "zammad", "ticketing", "bm1"],
+  "author": "Phillip Baumgärtner",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
