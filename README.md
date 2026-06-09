@@ -11,6 +11,10 @@ deliberately covers only a narrow set of opinionated workflows.
 
 ## Tools
 
+- [`zammad_create_shared_draft`](#zammad_create_shared_draft) — Reply-All shared draft with strict reply-HTML validation and signature rendering.
+- [`zammad_get_ticket_thread`](#zammad_get_ticket_thread) — Ticket meta + all articles (with bodies) in one round-trip.
+- [`zammad_add_internal_note`](#zammad_add_internal_note) — Append an internal note (hard-coded `type=note, internal=true`).
+
 ### `zammad_create_shared_draft`
 
 Creates or overwrites the shared draft of a Zammad ticket as a Reply-All
@@ -108,6 +112,43 @@ On validation failure:
   ]
 }
 ```
+
+### `zammad_get_ticket_thread`
+
+Fetches a ticket and all of its articles in a single call. Useful for
+"give me context on ticket X before I write anything" — combines two
+Zammad endpoints (`/tickets/<id>?expand=true` and
+`/ticket_articles/by_ticket/<id>`) and returns a flat structure with
+ticket meta plus the article list.
+
+Parameters:
+
+- `ticket_id` — numeric ticket ID.
+- `include_internal` (default `true`) — set to `false` to hide internal
+  notes from the result.
+- `include_bodies` (default `true`) — set to `false` to get a cheap meta-
+  only overview of long threads.
+- `max_articles` (optional) — caps to the most recent N articles.
+
+Response: `{ ok, ticket_url, ticket: {...}, article_count_returned,
+article_count_total, truncated, articles: [...] }`.
+
+### `zammad_add_internal_note`
+
+Appends an internal note to a ticket. The tool hard-codes
+`type: "note"` and `internal: true`, so it is structurally impossible
+to accidentally send an email to the customer. For customer-facing
+content use `zammad_create_shared_draft` and let a human send the draft
+from the Zammad UI.
+
+Parameters:
+
+- `ticket_id` — numeric ticket ID.
+- `body` — body content (HTML or plain text).
+- `content_type` — `text/html` (default) or `text/plain`.
+- `subject` (optional) — internal-list subject.
+
+Response: `{ ok, ticket_url, article_id, type, internal }`.
 
 ## Setup
 

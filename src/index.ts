@@ -5,6 +5,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { ZammadClient } from "./api-client.ts";
 import { loadConfig } from "./config.ts";
 import { registerSharedDraftTools } from "./tools/shared-drafts.ts";
+import { registerTicketTools } from "./tools/tickets.ts";
+import { registerInternalNoteTools } from "./tools/internal-notes.ts";
 
 let config;
 try {
@@ -23,6 +25,8 @@ const server = new McpServer({
 });
 
 registerSharedDraftTools(server, client, config);
+registerTicketTools(server, client);
+registerInternalNoteTools(server, client);
 
 async function main() {
   const transport = new StdioServerTransport();
