@@ -1,9 +1,9 @@
-# zammad-mcp
+# Zammad MCP Server
 
 MCP server for [Zammad](https://zammad.org) that focuses on workflows the
 standard Zammad API tooling does not cover well — primarily **shared drafts**
 with strict reply-HTML validation, fresh signature rendering and German-
-localised quote blocks.
+localised quote blocks. The package/repo name is `zammad-mcp`.
 
 Built to coexist with generic Zammad MCP servers (e.g.
 [`basher83/zammad-mcp`](https://github.com/basher83/zammad-mcp)) — this one
@@ -210,6 +210,15 @@ npm test
 Unit tests use Node's built-in test runner via `--experimental-strip-types`.
 The signature resolver is tested with a mock Zammad client; everything
 else is pure logic and doesn't need network access.
+
+## About BM1
+
+`zammad-mcp` is built and maintained by [BM1](https://www.bm1.de), a German
+agency for SEO, web development and custom software. We build
+search-visible websites, data-driven SEO setups and special-purpose tooling
+like this MCP server, which automates our day-to-day support workflows. If
+you need help with SEO, a web project or an integration nobody offers off
+the shelf — [talk to us](https://www.bm1.de).
 
 ## License
 
