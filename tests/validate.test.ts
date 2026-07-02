@@ -43,14 +43,14 @@ test("validator flags ASCII double quote", () => {
   assert.ok(issues.some((i) => i.code === "ASCII_QUOTE"));
 });
 
-test("validator flags wrong closing quote (U+201C as close)", () => {
-  const html = "<div>The „Book“ is great</div><div>Best regards</div>";
+test("validator flags wrong closing quote (U+201D as close)", () => {
+  const html = "<div>The „Book” is great</div><div>Best regards</div>";
   const issues = validateReplyHtml(html);
   assert.ok(issues.some((i) => i.code === "WRONG_CLOSING_QUOTE"));
 });
 
-test("validator accepts correct German quotes (U+201E + U+201D)", () => {
-  const html = "<div>The „Book” is great</div><div>Best regards</div>";
+test("validator accepts correct German quotes (U+201E + U+201C)", () => {
+  const html = "<div>The „Book“ is great</div><div>Best regards</div>";
   const issues = validateReplyHtml(html).filter((i) => i.code === "WRONG_CLOSING_QUOTE");
   assert.deepEqual(issues, []);
 });

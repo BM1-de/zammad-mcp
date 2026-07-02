@@ -65,24 +65,25 @@ export function validateReplyHtml(
     const context = textOnly.slice(ctxStart, ctxEnd);
     const hasGermanOpener = textOnly.includes("„");
     const fixHint = hasGermanOpener
-      ? 'Your text already uses „ (U+201E, German opener) — close with ” (U+201D, German closer). REPLACE the " character literally with ” — do NOT submit the same body again.'
-      : 'Use „…” (U+201E + U+201D) for German or “…” (U+201C + U+201D) for English. REPLACE every ASCII " with one of those literally.';
+      ? 'Your text already uses „ (U+201E, German opener) — the German closer is “ (U+201C). REPLACE the " character literally with „ (opening) or “ (closing) — do NOT submit the same body again.'
+      : 'Use „…“ (U+201E + U+201C) for German or “…” (U+201C + U+201D) for English. REPLACE every ASCII " with one of those literally.';
     issues.push({
       code: "ASCII_QUOTE",
       msg: `Straight ASCII quote " (U+0022) at text position ${asciiQuoteIdx} — context "…${context}…". ${fixHint}`,
     });
   }
 
-  // German typographic mistake: opening with „ (U+201E) and closing with “ (U+201C,
-  // which is the English opener) instead of ” (U+201D, the German closer).
-  const wrongCloserIdx = textOnly.indexOf("“");
-  if (wrongCloserIdx >= 0 && textOnly.includes("„") && !textOnly.includes("”")) {
+  // German typographic mistake: opening with „ (U+201E) but closing with ” (U+201D,
+  // the ENGLISH closer). German quotes are „…“ — the closer is “ (U+201C), the same
+  // glyph English uses as opener. That overlap is exactly why this gets mixed up.
+  const wrongCloserIdx = textOnly.indexOf("”");
+  if (wrongCloserIdx >= 0 && textOnly.includes("„")) {
     const ctxStart = Math.max(0, wrongCloserIdx - 15);
     const ctxEnd = Math.min(textOnly.length, wrongCloserIdx + 16);
     const context = textOnly.slice(ctxStart, ctxEnd);
     issues.push({
       code: "WRONG_CLOSING_QUOTE",
-      msg: `German opening quote „ (U+201E) used together with English opener “ (U+201C) as closer at position ${wrongCloserIdx} — context "…${context}…". REPLACE “ literally with ” (U+201D). Do NOT submit the same body again.`,
+      msg: `German opening quote „ (U+201E) used together with English closer ” (U+201D) at position ${wrongCloserIdx} — context "…${context}…". German quotes close with “ (U+201C): „Beispiel“. REPLACE ” literally with “. Do NOT submit the same body again.`,
     });
   }
 
