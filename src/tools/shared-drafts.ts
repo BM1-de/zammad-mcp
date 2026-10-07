@@ -10,6 +10,7 @@ import {
   ensureMessageIdBrackets,
   extractEmail,
   filterSelfFromCc,
+  parseAddressList,
   stripSubjectPrefix,
 } from "../lib/compose.ts";
 
@@ -92,13 +93,16 @@ export function registerSharedDraftTools(
     "zammad_create_shared_draft",
     [
       "Create or overwrite the shared draft of a Zammad ticket as a Reply-All email.",
-      "Auto-detects the most recent customer article and derives to/cc/subject/in_reply_to from it.",
+      "Auto-detects the most recent customer article and derives to/cc/subject/in_reply_to from it:",
+      "to is its sender, cc its other To and Cc recipients without ZAMMAD_SELF_EMAILS.",
       "Renders the agent's signature fresh from Zammad (with placeholder substitution and lazy",
-      "loading of related objects) and appends the original article as a localised <blockquote>.",
+      "loading of related objects) and appends the original article as a localised <blockquote>,",
+      "by default stripped of the conversation history the sender quoted themselves (quote_history).",
       "PUT semantics: any existing draft on the ticket is overwritten.",
       "",
       "reply_html validation (always on for universal rules, conditional for configured ones):",
-      "- universal: no top-level <p>, no <br><br>, no ASCII straight quotes \", no ASCII apostrophe ' inside words",
+      "- universal: no top-level <p>, no <br><br>, no typed bullet lists (lines starting with - – • *; use <ul><li>),",
+      "no ASCII straight quotes \", no ASCII apostrophe ' inside words",
       "- when ZAMMAD_BANNED_NAMES is set: body must not contain any banned name",
       "- when ZAMMAD_REQUIRED_GREETING is set: body must contain that greeting",
     ].join(" "),
@@ -110,7 +114,9 @@ export function registerSharedDraftTools(
         "Reply body as HTML with a nested <div> structure. Example: " +
         "<div><div>Hello Mr Smith,</div><div><br></div>" +
         "<div>thank you for your message ...</div><div><br></div>" +
-        "<div>Best regards</div></div>",
+        "<div>Best regards</div></div>. " +
+        "Lists: <div><ul><li>First</li><li>Second</li></ul></div> with <div><br></div> before and after — " +
+        "never lines starting with a dash. End with the greeting; the empty line before the signature is added automatically.",
       ),
       signature_id: z.number().int().positive().default(1).describe(
         "Signature ID from /signatures (default: 1).",
@@ -123,9 +129,16 @@ export function registerSharedDraftTools(
         "'de' → \"Am Dienstag, 09. Juni 2026 um 10:00:00, schrieb X:\". " +
         "When omitted, falls back to ZAMMAD_QUOTE_LOCALE (server default).",
       ),
+      quote_history: z.enum(["trim", "full"]).optional().describe(
+        "How much of the referenced article to quote. 'trim' keeps only what the sender wrote in " +
+        "that message and drops the conversation history they quoted themselves — keeps long threads short. " +
+        "'full' quotes the article verbatim. When omitted, falls back to ZAMMAD_QUOTE_HISTORY " +
+        "(server default: 'trim').",
+      ),
     },
-    async ({ ticket_id, reply_html, signature_id, extra_cc, quote_locale }) => {
+    async ({ ticket_id, reply_html, signature_id, extra_cc, quote_locale, quote_history }) => {
       const effectiveLocale = quote_locale ?? config.defaultQuoteLocale;
+      const effectiveHistory = quote_history ?? config.defaultQuoteHistory;
       const issues = validateReplyHtml(reply_html, {
         bannedNamePatterns: config.bannedNamePatterns,
         requiredGreeting: config.requiredGreeting,
@@ -154,9 +167,12 @@ export function registerSharedDraftTools(
         if (!toEmail) {
           throw new Error("The reference article has no 'from' header — reply target is unknown.");
         }
-        const ccList = filterSelfFromCc(ref.cc, config.selfEmails);
+        const ccList = filterSelfFromCc([ref.to, ref.cc], [...config.selfEmails, toEmail]);
+        const ccKnown = new Set(parseAddressList(ccList.join(", ")).map((a) => a.email.toLowerCase()));
         for (const extra of extra_cc) {
-          if (!ccList.includes(extra)) ccList.push(extra);
+          if (ccKnown.has(extra.toLowerCase())) continue;
+          ccKnown.add(extra.toLowerCase());
+          ccList.push(extra);
         }
         const ccString = ccList.join(", ");
 
@@ -174,14 +190,15 @@ export function registerSharedDraftTools(
         if (!ref.created_at) {
           throw new Error(`Article ${ref.id} has no created_at — cannot build a quote-block date.`);
         }
-        const quoteBlock = buildQuoteBlock(
+        const quote = buildQuoteBlock(
           ref.created_at,
           ref.from ?? "",
           originalBody,
           effectiveLocale,
+          effectiveHistory,
         );
 
-        const finalBody = composeFinalBody(reply_html, renderedSig, signature_id, quoteBlock);
+        const finalBody = composeFinalBody(reply_html, renderedSig, signature_id, quote.html);
 
         const payload = {
           new_article: {
@@ -221,6 +238,8 @@ export function registerSharedDraftTools(
                   in_reply_to: inReplyTo,
                   reference_article_id: ref.id,
                   quote_locale: effectiveLocale,
+                  quote_history: effectiveHistory,
+                  quote_history_trimmed: quote.trimmed,
                   draft_id: draftResp.id ?? null,
                 },
                 null,

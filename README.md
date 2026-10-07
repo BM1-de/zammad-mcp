@@ -25,7 +25,12 @@ What the server does automatically:
 - Finds the last incoming customer article (`sender=Customer`, `type=email`;
   falls back to the most recent article if none).
 - Computes `to`, `cc`, `subject`, `in_reply_to` and `from` from that article
-  plus `/users/me` and the ticket's group email-address.
+  plus `/users/me` and the ticket's group email-address. Like Zammad's own
+  "Reply All", `to` is the article's sender and `cc` collects its other To
+  and Cc recipients. Address lists are parsed per RFC 5322, so display names
+  containing commas (`"Doe, Jane" <jane@example.com>`) stay intact, and are
+  written as bare addresses — Zammad's recipient field splits a draft's CC at
+  every comma, even inside a quoted display name.
 - Filters configured self-addresses out of CC (so you don't reply to
   yourself).
 - Fetches the signature template fresh from Zammad and resolves all
@@ -33,7 +38,9 @@ What the server does automatically:
   Defensively strips HTML tags that may have crept into placeholders via
   the Zammad WYSIWYG editor.
 - Appends the original article as a German-localised `<blockquote>` with
-  Europe/Berlin date (CET/CEST aware).
+  Europe/Berlin date (CET/CEST aware). By default only what the sender wrote
+  in that message is quoted — the conversation history they quoted themselves
+  is stripped, so replies in long threads stay short (see `quote_history`).
 - Wraps the signature in `<div data-signature="true" data-signature-id="X">`
   so Zammad does not stack a second signature on top when the draft is
   opened.
@@ -51,6 +58,29 @@ What you provide:
 - `quote_locale` (optional, `en` or `de`) — language for the quote block's
   date format and "wrote:" lead-in. When omitted, the server default
   (`ZAMMAD_QUOTE_LOCALE`, falling back to `en`) is used.
+- `quote_history` (optional, `trim` or `full`) — how much of the referenced
+  article to quote. `trim` keeps only the message itself, `full` quotes it
+  verbatim. When omitted, the server default (`ZAMMAD_QUOTE_HISTORY`, falling
+  back to `trim`) is used.
+
+##### Quote trimming (`quote_history`)
+
+Mail clients quote the entire thread, so every reply carries the whole
+conversation again. `trim` cuts the quoted article at the earliest of these
+markers and re-balances the remaining HTML:
+
+- Zammad's own `<span class="js-signatureMarker">` fold marker
+- a nested `<blockquote>`
+- client wrappers: `gmail_quote`, `moz-cite-prefix`, `yahoo_quoted`,
+  `OutlookMessageHeader`, `divRplyFwdMsg`, `appendonsend`
+- Outlook/Exchange header blocks (`<b>Von: </b>`, `<b>From: </b>`, …)
+- `-----Ursprüngliche Nachricht-----` / `-----Original Message-----`
+- attribution lines: "Am …, schrieb X:" / "On …, X wrote:"
+
+The sender's own signature stays in the quote (it is part of their message).
+A body that consists *only* of a quote is never reduced to nothing — in that
+case the article is quoted verbatim and the response reports
+`quote_history_trimmed: false`.
 
 #### Reply-HTML validation
 
@@ -60,15 +90,16 @@ The tool refuses the call if any of these issues are found in `reply_html`:
 |---|---|
 | `P_TAG` | No top-level `<p>` tags (content inside `<blockquote>` is ignored). Use nested `<div>` instead — Zammad's editor produces doubled empty lines from `<p>` blocks. |
 | `DOUBLE_BR` | No `<br><br>` sequences. Use `<div><br></div>` for paragraph spacing. |
+| `TYPED_LIST` | Two or more lines start with a typed list marker (`-`, `–`, `•`, `*`). Use a real `<ul><li>…</li></ul>` instead. |
 | `ASCII_QUOTE` | No straight ASCII `"` in visible text. Use typographically correct quotes for your language. |
-| `WRONG_CLOSING_QUOTE` | If the text uses the German opening quote `„` (U+201E), it must close with `”` (U+201D), not with `“` (U+201C, which is the English opener). |
+| `WRONG_CLOSING_QUOTE` | If the text uses the German opening quote `„` (U+201E), it must close with `“` (U+201C), not with `”` (U+201D, which is the English closer). |
 | `ASCII_APOSTROPHE` | No ASCII `'` inside a word. Use `’` (U+2019). |
 | `WRONG_DASH_LOCALE` (locale=de only) | German body uses em-dash `—` (U+2014). German typography uses en-dash `–` (U+2013) with spaces as parenthetical dash. |
 | `ASCII_DASH_AS_GEDANKENSTRICH` (locale=de only) | German body uses ` - ` (ASCII hyphen with spaces) as parenthetical dash. Use ` – ` (en-dash with spaces) instead. |
 | `SIGNATURE_DUPLICATE` (configurable) | The body contains a name listed in `ZAMMAD_BANNED_NAMES`. Prevents agents from typing the name that the signature already provides. |
 | `MISSING_GREETING` (configurable) | The body does not contain the string configured in `ZAMMAD_REQUIRED_GREETING`. |
 
-Universal checks (`P_TAG`, `DOUBLE_BR`, `ASCII_QUOTE`, `WRONG_CLOSING_QUOTE`,
+Universal checks (`P_TAG`, `DOUBLE_BR`, `TYPED_LIST`, `ASCII_QUOTE`, `WRONG_CLOSING_QUOTE`,
 `ASCII_APOSTROPHE`) are always on. The two configurable checks are silent
 when their respective env-var is empty.
 
@@ -83,6 +114,20 @@ when their respective env-var is empty.
   <div>Best regards</div>
 </div>
 ```
+
+Lists go into a real `<ul>`, wrapped in a `<div>` with an empty line before
+and after:
+
+```html
+<div>the changes are live:</div>
+<div><br></div>
+<div><ul><li>Home: new header image</li><li>Contact: form shortened</li></ul></div>
+<div><br></div>
+```
+
+The tool puts one empty line (`<div><br></div>`) between the end of
+`reply_html` — usually the closing greeting — and the signature, unless
+`reply_html` already ends with one.
 
 #### Response
 
@@ -174,6 +219,7 @@ Node 18 or higher.
 | `ZAMMAD_BANNED_NAMES` | no | Comma-separated list of name patterns the reply body must not contain (typically: your own name, because the signature already supplies it). Default: empty. |
 | `ZAMMAD_REQUIRED_GREETING` | no | If set, every reply body must contain this string (case-insensitive). Default: empty. |
 | `ZAMMAD_QUOTE_LOCALE` | no | Default locale for the quote-block lead-in. Either `en` (default) or `de`. Per-call overridable via the `quote_locale` tool parameter. |
+| `ZAMMAD_QUOTE_HISTORY` | no | How much of the referenced article to quote: `trim` (default — drop the history the sender quoted themselves) or `full` (quote verbatim). Per-call overridable via the `quote_history` tool parameter. |
 
 See `.env.example` for a starter file.
 

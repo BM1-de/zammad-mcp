@@ -26,6 +26,10 @@ export interface ValidatorOptions {
   locale?: "en" | "de";
 }
 
+// A list marker typed as text at the start of a line: "- ", "– ", "— ", "• "
+// or "* " directly after a block start or a line break.
+const TYPED_LIST_MARKER = /(^|<(?:div|li)\b[^>]*>|<br\s*\/?>)(\s*)[-–—•*](?:\s|&nbsp;)+(?=\S)/gi;
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -50,6 +54,16 @@ export function validateReplyHtml(
     issues.push({
       code: "DOUBLE_BR",
       msg: "Consecutive <br><br> found. Use <div><br></div> for paragraph spacing.",
+    });
+  }
+
+  // Typed bullet lists ("- item" per line) instead of a real <ul>. One such line
+  // can be a legitimate sentence start, two or more are a list.
+  const typedMarkers = withoutBlockquotes.match(TYPED_LIST_MARKER) ?? [];
+  if (typedMarkers.length >= 2) {
+    issues.push({
+      code: "TYPED_LIST",
+      msg: `${typedMarkers.length} lines start with a typed list marker (-, –, • or *). Use a real HTML list instead: <div><ul><li>First item</li><li>Second item</li></ul></div>, with <div><br></div> before and after. Do NOT just swap the marker character.`,
     });
   }
 
@@ -112,7 +126,12 @@ export function validateReplyHtml(
       });
     }
     // ASCII hyphen used as parenthetical dash: " - " (space-hyphen-space).
-    const asciiDashMatch = textOnly.match(/ - /);
+    // Typed list markers are TYPED_LIST's business — without this, "<div>- item"
+    // reads as " - item" and the hint below would turn the list into "– item".
+    const asciiDashMatch = (typedMarkers.length >= 2
+      ? withoutBlockquotes.replace(TYPED_LIST_MARKER, "$1$2").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")
+      : textOnly
+    ).match(/ - /);
     if (asciiDashMatch && asciiDashMatch.index !== undefined) {
       const idx = asciiDashMatch.index + 1; // position of the hyphen itself
       const ctxStart = Math.max(0, idx - 15);

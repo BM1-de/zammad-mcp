@@ -1,4 +1,4 @@
-import type { QuoteLocale } from "./lib/compose.ts";
+import type { QuoteHistory, QuoteLocale } from "./lib/compose.ts";
 
 /**
  * Runtime configuration for the Zammad MCP server.
@@ -33,6 +33,13 @@ export interface ServerConfig {
    * per tool call via the `quote_locale` parameter.
    */
   defaultQuoteLocale: QuoteLocale;
+  /**
+   * How much of the referenced article goes into the quote block. `"trim"`
+   * (default) keeps only what the sender wrote in that message and drops the
+   * conversation history they quoted themselves; `"full"` quotes the article
+   * verbatim. Overridable per tool call via `quote_history`.
+   */
+  defaultQuoteHistory: QuoteHistory;
 }
 
 function parseList(raw: string | undefined): string[] {
@@ -62,6 +69,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const defaultQuoteLocale: QuoteLocale =
     rawLocale === "de" ? "de" : "en";
 
+  const rawHistory = env.ZAMMAD_QUOTE_HISTORY?.trim().toLowerCase();
+  const defaultQuoteHistory: QuoteHistory =
+    rawHistory === "full" ? "full" : "trim";
+
   return {
     zammadUrl,
     zammadHttpToken,
@@ -69,5 +80,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     bannedNamePatterns: parseList(env.ZAMMAD_BANNED_NAMES),
     requiredGreeting: env.ZAMMAD_REQUIRED_GREETING?.trim() ?? "",
     defaultQuoteLocale,
+    defaultQuoteHistory,
   };
 }

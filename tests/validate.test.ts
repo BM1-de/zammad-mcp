@@ -149,3 +149,40 @@ test("validator ignores content inside <blockquote>", () => {
   const issues = validateReplyHtml(html, FULL);
   assert.deepEqual(issues, []);
 });
+
+test("validator flags typed dash list and points to <ul>", () => {
+  const html =
+    "<div><div>Hallo Anne,</div><div><br></div>" +
+    "<div>– Club La Santa: Headerbild verschoben</div>" +
+    "<div>– Kontakt: Buchungen entfernt</div>" +
+    "<div><br></div><div>Viele Grüße</div></div>";
+  const issues = validateReplyHtml(html, { locale: "de" });
+  assert.deepEqual(issues.map((i) => i.code), ["TYPED_LIST"]);
+});
+
+test("validator reports a typed ASCII-dash list as TYPED_LIST, not as Gedankenstrich", () => {
+  const html =
+    "<div><div>- erster Punkt</div><div>- zweiter Punkt</div>" +
+    "<div>• dritter<br>* vierter</div></div>";
+  const issues = validateReplyHtml(html, { locale: "de" });
+  assert.deepEqual(issues.map((i) => i.code), ["TYPED_LIST"]);
+});
+
+test("validator still flags ' - ' inside a typed list item", () => {
+  const html = "<div><div>- erster Punkt - mit Einschub</div><div>- zweiter Punkt</div></div>";
+  const codes = validateReplyHtml(html, { locale: "de" }).map((i) => i.code);
+  assert.deepEqual(codes, ["TYPED_LIST", "ASCII_DASH_AS_GEDANKENSTRICH"]);
+});
+
+test("validator accepts a real <ul> list", () => {
+  const html =
+    "<div><div>Hallo Anne,</div><div><br></div><div>die Änderungen sind online:</div><div><br></div>" +
+    "<div><ul><li>Club La Santa: Headerbild verschoben</li><li>Kontakt: Buchungen entfernt</li></ul></div>" +
+    "<div><br></div><div>Viele Grüße</div></div>";
+  assert.deepEqual(validateReplyHtml(html, { locale: "de" }), []);
+});
+
+test("validator tolerates a single line starting with a dash", () => {
+  const html = "<div><div>– so viel dazu.</div><div>Viele Grüße</div></div>";
+  assert.deepEqual(validateReplyHtml(html, { locale: "de" }), []);
+});
